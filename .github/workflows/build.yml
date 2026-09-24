@@ -1,0 +1,131 @@
+name: Build DevBuild
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_COLOR: true
+  EQUICORD_REMOTE: ${{ github.repository }}
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check upstream Equicord commit
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git ls-remote https://github.com/Equicord/Equicord.git HEAD | cut -f1)
+          if [ -z "$UPSTREAM_SHA" ]; then
+            echo "Error: Could not retrieve upstream commit hash."
+            exit 1
+          fi
+          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=${UPSTREAM_SHA:0:7}" >> $GITHUB_OUTPUT
+
+          RELEASE_SHA=$(gh release view devbuild --repo "${{ github.repository }}" --json body --jq .body 2>/dev/null | grep -oE '[a-f0-9]{40}' | head -n1 || echo "")
+
+          echo "Upstream commit: $UPSTREAM_SHA"
+          echo "Current release commit: $RELEASE_SHA"
+
+          if [ "$UPSTREAM_SHA" = "$RELEASE_SHA" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Upstream has not changed. Skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "New commit or manual trigger detected. Proceeding to build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clone official Equicord
+        if: steps.check.outputs.should_build == 'true'
+        run: git clone --depth 1 https://github.com/Equicord/Equicord.git .
+
+      - name: Checkout repository
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/checkout@v4
+        with:
+          path: current-repo
+
+      - name: Download and inject GoLiveBypass plugin
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          mkdir -p src/userplugins
+          curl -fsSL -o golive.zip https://github.com/bezumiya/GoLiveBypass/releases/download/v1.1.11/goLiveBypass-vencord.zip
+          unzip -q golive.zip -d tmp_plugin
+          if [ -d "tmp_plugin/goLiveBypass" ]; then
+            mv tmp_plugin/goLiveBypass src/userplugins/
+          else
+            mv tmp_plugin src/userplugins/goLiveBypass
+          fi
+          rm -rf golive.zip tmp_plugin
+
+      - name: Inject BroadcastBoxScreenShare plugin
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          cp -r current-repo/BroadcastBoxScreenShare src/userplugins/
+          rm -rf current-repo
+
+      - name: Setup pnpm
+        if: steps.check.outputs.should_build == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Use Node.js 24
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.check.outputs.should_build == 'true'
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build web
+        if: steps.check.outputs.should_build == 'true'
+        run: pnpm buildWebStandalone
+
+      - name: Build
+        if: steps.check.outputs.should_build == 'true'
+        run: pnpm build --standalone
+
+      - name: Generate plugin list
+        if: steps.check.outputs.should_build == 'true'
+        run: pnpm generatePluginJson dist/plugins.json dist/plugin-readmes.json
+
+      - name: Clean up obsolete files
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map
+
+      - name: Create dist.zip archive
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          zip -r dist.zip dist
+
+      - name: Publish DevBuild release
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          UPSTREAM_SHA="${{ steps.check.outputs.upstream_sha }}"
+          RELEASE_TAG="$(git rev-parse --short HEAD)"
+
+          # Delete the existing devbuild release and tag to ensure strictly one release exists
+          if gh release view devbuild --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release delete devbuild --repo "${{ github.repository }}" --yes --cleanup-tag
+          fi
+
+          # Upload individual dist/* artifacts and dist.zip matching the official Equicord file structure
+          gh release create devbuild dist/* dist.zip \
+            --repo "${{ github.repository }}" \
+            --title "DevBuild $RELEASE_TAG" \
+            --notes "Official Equicord commit: $UPSTREAM_SHA" \
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
