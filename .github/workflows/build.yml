@@ -104,12 +104,47 @@ jobs:
       - name: Clean up obsolete files
         if: steps.check.outputs.should_build == 'true'
         run: |
-          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map dist/browser
+          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map
 
       - name: Create dist.zip archive
         if: steps.check.outputs.should_build == 'true'
         run: |
           zip -r dist.zip dist
+
+      - name: Flatten dist for release assets
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          set -euo pipefail
+
+          # browser -> root
+          mv dist/browser/browser.css dist/browser.css
+          mv dist/browser/browser.js dist/browser.js
+          mv dist/browser/browser.js.LEGAL.txt dist/browser.js.LEGAL.txt
+
+          # desktop -> root
+          mv dist/desktop/patcher.js dist/patcher.js
+          mv dist/desktop/patcher.js.LEGAL.txt dist/patcher.js.LEGAL.txt
+          mv dist/desktop/preload.js dist/preload.js
+          mv dist/desktop/renderer.css dist/renderer.css
+          mv dist/desktop/renderer.js dist/renderer.js
+          mv dist/desktop/renderer.js.LEGAL.txt dist/renderer.js.LEGAL.txt
+
+          # equibop -> root with equibop prefix
+          mv dist/equibop/main.js dist/equibopMain.js
+          mv dist/equibop/main.js.LEGAL.txt dist/equibopMain.js.LEGAL.txt
+          mv dist/equibop/package.json dist/equibopPackage.json
+          mv dist/equibop/preload.js dist/equibopPreload.js
+          mv dist/equibop/renderer.css dist/equibopRenderer.css
+          mv dist/equibop/renderer.js dist/equibopRenderer.js
+          mv dist/equibop/renderer.js.LEGAL.txt dist/equibopRenderer.js.LEGAL.txt
+
+          # remove subfolders and files not in release schema
+          rm -rf dist/browser dist/desktop dist/equibop
+          rm -rf dist/*-unpacked dist/vendor
+          rm -f dist/*.map
+          rm -f dist/Equicord.user.css
+          rm -f dist/equicordDesktopRenderer.css dist/equicordDesktopRenderer.css.map
+          rm -f dist/Vencord.user.css dist/vencordDesktopRenderer.css dist/vencordDesktopRenderer.css.map
 
       - name: Publish DevBuild release
         if: steps.check.outputs.should_build == 'true'
