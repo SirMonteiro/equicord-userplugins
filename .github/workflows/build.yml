@@ -104,7 +104,7 @@ jobs:
       - name: Clean up obsolete files
         if: steps.check.outputs.should_build == 'true'
         run: |
-          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map
+          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map dist/browser
 
       - name: Create dist.zip archive
         if: steps.check.outputs.should_build == 'true'
