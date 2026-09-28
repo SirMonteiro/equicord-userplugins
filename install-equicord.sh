@@ -4,7 +4,7 @@ set -euo pipefail
 # Configuration
 REPO_OWNER="SirMonteiro"
 REPO_NAME="equicord-userplugins"
-RELEASE_TAG="devbuild"
+RELEASE_TAG="latest"
 
 WORK_DIR="/tmp/equicord"
 DIST_DIR="${WORK_DIR}/dist"

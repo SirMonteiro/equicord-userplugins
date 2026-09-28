@@ -11,18 +11,18 @@ $workDir       = (Get-Location).Path
 $distDir       = Join-Path -Path $workDir -ChildPath 'dist'
 $installerPath = Join-Path -Path $workDir -ChildPath 'EquilotlCli.exe'
 
-$apiUrl       = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/devbuild"
+$apiUrl       = "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest"
 $installerUrl = 'https://github.com/Equicord/Equilotl/releases/latest/download/EquilotlCli.exe'
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # 1. Fetch asset metadata from GitHub API
-Write-Host "Querying release assets for $RepoOwner/$RepoName (devbuild)..." -ForegroundColor Cyan
+Write-Host "Querying release assets for $RepoOwner/$RepoName (latest)..." -ForegroundColor Cyan
 $headers = @{ "User-Agent" = "Equicord-Installer" }
 $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
 
 if (-not $release.assets -or $release.assets.Count -eq 0) {
-    throw "No assets found in the devbuild release for $RepoOwner/$RepoName."
+    throw "No assets found in the latest release for $RepoOwner/$RepoName."
 }
 
 # 2. Recreate local dist directory

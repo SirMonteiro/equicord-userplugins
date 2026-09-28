@@ -43,15 +43,44 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clone official Equicord
+      - name: Checkout official Equicord
         if: steps.check.outputs.should_build == 'true'
-        run: git clone --depth 1 https://github.com/Equicord/Equicord.git .
+        uses: actions/checkout@v7
+        with:
+          repository: Equicord/Equicord
+
+      - name: Patch updater to compare upstream Equicord
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = "src/main/updater/http.ts";
+            let code = fs.readFileSync(file, "utf8");
+
+            // Point commit changelog comparison to official Equicord repo
+            code = code.replace(
+              "const data = await githubGet(`/compare/${gitHash}...HEAD`);",
+              `let data;
+              try {
+                data = await fetchJson("https://api.github.com/repos/Equicord/Equicord/compare/" + gitHash + "...HEAD", {
+                  headers: {
+                    Accept: "application/vnd.github+json",
+                    "User-Agent": VENCORD_USER_AGENT
+                  }
+                });
+              } catch {
+                return [];
+              }`
+            );
+
+            fs.writeFileSync(file, code, "utf8");
+          '
 
       - name: Checkout repository
         if: steps.check.outputs.should_build == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          path: current-repo
+          path: custom
 
       - name: Download and inject GoLiveBypass plugin
         if: steps.check.outputs.should_build == 'true'
@@ -66,11 +95,11 @@ jobs:
           fi
           rm -rf golive.zip tmp_plugin
 
-      - name: Inject BroadcastBoxScreenShare plugin
+      - name: Inject repo custom plugin
         if: steps.check.outputs.should_build == 'true'
         run: |
-          cp -r current-repo/BroadcastBoxScreenShare src/userplugins/
-          rm -rf current-repo
+          find custom -mindepth 1 -maxdepth 1 -type d -exec cp -r {} src/userplugins/ \;
+          rm -rf custom
 
       - name: Setup PNPM
         if: steps.check.outputs.should_build == 'true'
@@ -123,21 +152,17 @@ jobs:
         run: |
           zip -j dist.zip dist/release/*
 
-      - name: Publish DevBuild release
+      - name: Publish latest release
         if: steps.check.outputs.should_build == 'true'
         run: |
           UPSTREAM_SHA="${{ steps.check.outputs.upstream_sha }}"
-          RELEASE_TAG="$(git rev-parse --short HEAD)"
 
-          # Delete the existing devbuild release and tag to ensure strictly one release exists
-          if gh release view devbuild --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release delete devbuild --repo "${{ github.repository }}" --yes --cleanup-tag
-          fi
-
-          # Upload individual dist/release/* artifacts and dist.zip matching the official Equicord file structure
-          gh release create devbuild dist/release/* dist.zip \
-            --repo "${{ github.repository }}" \
-            --title "DevBuild $RELEASE_TAG" \
-            --notes "Official Equicord commit: $UPSTREAM_SHA"
+          # Upload individual files and dist.zip, overwriting existing ones
+          gh release upload latest --clobber --repo "${{ github.repository }}" dist/release/* dist.zip
+          gh release edit latest \
+                      --repo "${{ github.repository }}" \
+                      --title "DevBuild $UPSTREAM_SHA" \
+                      --notes "Official Equicord commit: $UPSTREAM_SHA" \
+                      --latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
