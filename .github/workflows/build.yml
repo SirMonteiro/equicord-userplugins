@@ -124,6 +124,17 @@ jobs:
           pnpm generateVencordPluginJson dist/vencordplugins.json
           pnpm generateDevsList dist/devs.json
 
+      - name: Preliminar cleanup
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          find dist/ -name package.json -delete
+          find dist/ -name "*.map" -delete
+
+      - name: Create dist.zip archive
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          zip -r dist.zip dist/*
+
       - name: Collect files to be released
         if: steps.check.outputs.should_build == 'true'
         run: |
@@ -146,11 +157,6 @@ jobs:
           find release -size 0 -delete
           rm -f release/package.json
           rm -f release/*.map
-
-      - name: Create dist.zip archive
-        if: steps.check.outputs.should_build == 'true'
-        run: |
-          zip -j dist.zip dist/release/*
 
       - name: Publish latest release
         if: steps.check.outputs.should_build == 'true'
