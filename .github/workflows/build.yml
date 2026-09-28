@@ -72,22 +72,12 @@ jobs:
           cp -r current-repo/BroadcastBoxScreenShare src/userplugins/
           rm -rf current-repo
 
-      - name: Setup pnpm
+      - name: Setup PNPM
         if: steps.check.outputs.should_build == 'true'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@v2.1.0
         with:
-          run_install: false
-
-      - name: Use Node.js 24
-        if: steps.check.outputs.should_build == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: "pnpm"
-
-      - name: Install dependencies
-        if: steps.check.outputs.should_build == 'true'
-        run: pnpm install --frozen-lockfile=false
+          runtime: node@v24
+          require-lockfile: true
 
       - name: Build web
         if: steps.check.outputs.should_build == 'true'
@@ -95,56 +85,43 @@ jobs:
 
       - name: Build
         if: steps.check.outputs.should_build == 'true'
-        run: pnpm build --standalone
+        run: pnpm buildStandalone
 
-      - name: Generate plugin list
-        if: steps.check.outputs.should_build == 'true'
-        run: pnpm generatePluginJson dist/plugins.json dist/plugin-readmes.json
-
-      - name: Clean up obsolete files
+      - name: Generate plugin lists
         if: steps.check.outputs.should_build == 'true'
         run: |
-          rm -rf dist/*-unpacked dist/vendor Vencord.user.css vencordDesktopRenderer.css vencordDesktopRenderer.css.map Equicord.user.css equicordDesktopRenderer.css equicordDesktopRenderer.css.map
+          pnpm generatePluginJson dist/plugins.json
+          pnpm generateEquicordPluginJson dist/equicordplugins.json
+          pnpm generateVencordPluginJson dist/vencordplugins.json
+          pnpm generateDevsList dist/devs.json
+
+      - name: Collect files to be released
+        if: steps.check.outputs.should_build == 'true'
+        run: |
+          cd dist
+          mkdir release
+
+          cp browser/browser.* release
+          cp Equicord.user.{js,js.LEGAL.txt} release
+
+          # copy the plugin data jsons, the extension zips and the desktop/equibop asars
+          cp *.{json,zip,asar} release
+
+          # legacy un-asared files
+          cp desktop/* release
+          for file in equibop/*; do
+            filename=$(basename "$file")
+            cp "$file" "release/equibop${filename^}"
+          done
+
+          find release -size 0 -delete
+          rm -f release/package.json
+          rm -f release/*.map
 
       - name: Create dist.zip archive
         if: steps.check.outputs.should_build == 'true'
         run: |
-          zip -r dist.zip dist
-
-      - name: Flatten dist for release assets
-        if: steps.check.outputs.should_build == 'true'
-        run: |
-          set -euo pipefail
-
-          # browser -> root
-          mv dist/browser/browser.css dist/browser.css
-          mv dist/browser/browser.js dist/browser.js
-          mv dist/browser/browser.js.LEGAL.txt dist/browser.js.LEGAL.txt
-
-          # desktop -> root
-          mv dist/desktop/patcher.js dist/patcher.js
-          mv dist/desktop/patcher.js.LEGAL.txt dist/patcher.js.LEGAL.txt
-          mv dist/desktop/preload.js dist/preload.js
-          mv dist/desktop/renderer.css dist/renderer.css
-          mv dist/desktop/renderer.js dist/renderer.js
-          mv dist/desktop/renderer.js.LEGAL.txt dist/renderer.js.LEGAL.txt
-
-          # equibop -> root with equibop prefix
-          mv dist/equibop/main.js dist/equibopMain.js
-          mv dist/equibop/main.js.LEGAL.txt dist/equibopMain.js.LEGAL.txt
-          mv dist/equibop/package.json dist/equibopPackage.json
-          mv dist/equibop/preload.js dist/equibopPreload.js
-          mv dist/equibop/renderer.css dist/equibopRenderer.css
-          mv dist/equibop/renderer.js dist/equibopRenderer.js
-          mv dist/equibop/renderer.js.LEGAL.txt dist/equibopRenderer.js.LEGAL.txt
-
-          # remove subfolders and files not in release schema
-          rm -rf dist/browser dist/desktop dist/equibop
-          rm -rf dist/*-unpacked dist/vendor
-          rm -f dist/*.map
-          rm -f dist/Equicord.user.css
-          rm -f dist/equicordDesktopRenderer.css dist/equicordDesktopRenderer.css.map
-          rm -f dist/Vencord.user.css dist/vencordDesktopRenderer.css dist/vencordDesktopRenderer.css.map
+          zip -j dist.zip dist/release/*
 
       - name: Publish DevBuild release
         if: steps.check.outputs.should_build == 'true'
@@ -157,10 +134,10 @@ jobs:
             gh release delete devbuild --repo "${{ github.repository }}" --yes --cleanup-tag
           fi
 
-          # Upload individual dist/* artifacts and dist.zip matching the official Equicord file structure
-          gh release create devbuild dist/* dist.zip \
+          # Upload individual dist/release/* artifacts and dist.zip matching the official Equicord file structure
+          gh release create devbuild dist/release/* dist.zip \
             --repo "${{ github.repository }}" \
             --title "DevBuild $RELEASE_TAG" \
-            --notes "Official Equicord commit: $UPSTREAM_SHA" \
+            --notes "Official Equicord commit: $UPSTREAM_SHA"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
