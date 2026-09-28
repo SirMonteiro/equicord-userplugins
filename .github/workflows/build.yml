@@ -127,7 +127,6 @@ jobs:
       - name: Preliminar cleanup
         if: steps.check.outputs.should_build == 'true'
         run: |
-          find dist/ -name package.json -delete
           find dist/ -name "*.map" -delete
 
       - name: Create dist.zip archive
